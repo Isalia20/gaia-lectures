@@ -6,7 +6,8 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader
 
-class ConvNet(pl.LightningModule):
+
+class ConvNetModule(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
@@ -26,32 +27,12 @@ class ConvNet(pl.LightningModule):
         x = self.fc2(x)
         return x
 
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = F.cross_entropy(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_acc", acc, prog_bar=True)
-        return loss
 
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = F.cross_entropy(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_acc", acc, prog_bar=True)
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
-
-
-class FullyConnectedUnrolled(pl.LightningModule):
+class FullyConnectedModule(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc = nn.Linear(28*28, 28*28)
-        self.fc_out = nn.Linear(28*28, 10)
+        self.fc = nn.Linear(28 * 28, 28 * 28)
+        self.fc_out = nn.Linear(28 * 28, 10)
 
     def forward(self, x):
         x = x.view(x.size(0), -1)
@@ -60,6 +41,16 @@ class FullyConnectedUnrolled(pl.LightningModule):
         x = self.fc_out(x)
         return x
 
+
+class LitClassifier(pl.LightningModule):
+    def __init__(self, model, lr=1e-3):
+        super().__init__()
+        self.model = model
+        self.lr = lr
+
+    def forward(self, x):
+        return self.model(x)
+
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
@@ -78,7 +69,8 @@ class FullyConnectedUnrolled(pl.LightningModule):
         self.log("val_acc", acc, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
+
 
 def get_dataloaders():
     transform = transforms.Compose([transforms.ToTensor()])
@@ -88,15 +80,19 @@ def get_dataloaders():
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4)
     return train_loader, val_loader
 
+
 def train_conv_model(train_loader, val_loader):
-    conv_model = ConvNet()
-    conv_trainer = pl.Trainer(max_epochs=2, accelerator="auto")
-    conv_trainer.fit(conv_model, train_loader, val_loader)
+    conv_model = ConvNetModule()
+    model = LitClassifier(conv_model)
+    trainer = pl.Trainer(max_epochs=2, accelerator="auto")
+    trainer.fit(model, train_loader, val_loader)
+
 
 def train_fc_model(train_loader, val_loader):
-    fc_model = FullyConnectedUnrolled()
-    fc_trainer = pl.Trainer(max_epochs=2, accelerator="auto")
-    fc_trainer.fit(fc_model, train_loader, val_loader)
+    fc_model = FullyConnectedModule()
+    model = LitClassifier(fc_model)
+    trainer = pl.Trainer(max_epochs=2, accelerator="auto")
+    trainer.fit(model, train_loader, val_loader)
 
 
 def main():
